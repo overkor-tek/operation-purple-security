@@ -1,0 +1,147 @@
+name: 🟣 Operation Purple - Repository Notifications
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    types: [opened, closed, reopened]
+  issues:
+    types: [opened, closed, reopened]
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    name: Create Notification Issue
+    
+    steps:
+      - name: 🔔 Create Notification
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const eventName = context.eventName;
+            const repo = context.repo;
+            const sender = context.payload.sender?.login || 'Unknown';
+            
+            let title = '';
+            let body = '';
+            let labels = ['🟣 operation-purple', 'notification'];
+            
+            // Push notifications
+            if (eventName === 'push') {
+              const commits = context.payload.commits || [];
+              const branch = context.payload.ref.replace('refs/heads/', '');
+              const commitCount = commits.length;
+              
+              title = `🟣 Push to ${branch}: ${commitCount} commit(s) by ${sender}`;
+              body = `## 📤 Push Event\n\n`;
+              body += `**Branch:** \`${branch}\`\n`;
+              body += `**Commits:** ${commitCount}\n`;
+              body += `**Author:** @${sender}\n`;
+              body += `**Repository:** ${repo.owner}/${repo.repo}\n\n`;
+              body += `### Commits:\n\n`;
+              
+              commits.forEach(commit => {
+                body += `- **${commit.message}**\n`;
+                body += `  - Author: ${commit.author.name}\n`;
+                body += `  - SHA: \`${commit.id.substring(0, 7)}\`\n`;
+                body += `  - [View commit](${commit.url})\n\n`;
+              });
+              
+              labels.push('push');
+            }
+            
+            // Pull Request notifications
+            else if (eventName === 'pull_request') {
+              const pr = context.payload.pull_request;
+              const action = context.payload.action;
+              
+              title = `🟣 PR ${action}: #${pr.number} - ${pr.title}`;
+              body = `## 🔀 Pull Request ${action}\n\n`;
+              body += `**PR:** #${pr.number}\n`;
+              body += `**Title:** ${pr.title}\n`;
+              body += `**Author:** @${pr.user.login}\n`;
+              body += `**Action:** ${action}\n`;
+              body += `**Repository:** ${repo.owner}/${repo.repo}\n\n`;
+              body += `**Description:**\n${pr.body || 'No description provided'}\n\n`;
+              body += `[View Pull Request](${pr.html_url})`;
+              
+              labels.push('pull-request');
+            }
+            
+            // Issue notifications
+            else if (eventName === 'issues') {
+              const issue = context.payload.issue;
+              const action = context.payload.action;
+              
+              // Don't notify about Operation Purple notification issues
+              if (issue.labels.some(l => l.name === '🟣 operation-purple')) {
+                console.log('Skipping notification for Operation Purple issue');
+                return;
+              }
+              
+              title = `🟣 Issue ${action}: #${issue.number} - ${issue.title}`;
+              body = `## 🐛 Issue ${action}\n\n`;
+              body += `**Issue:** #${issue.number}\n`;
+              body += `**Title:** ${issue.title}\n`;
+              body += `**Author:** @${issue.user.login}\n`;
+              body += `**Action:** ${action}\n`;
+              body += `**Repository:** ${repo.owner}/${repo.repo}\n\n`;
+              body += `**Description:**\n${issue.body || 'No description provided'}\n\n`;
+              body += `[View Issue](${issue.html_url})`;
+              
+              labels.push('issue');
+            }
+            
+            // Release notifications
+            else if (eventName === 'release') {
+              const release = context.payload.release;
+              
+              title = `🟣 Release Published: ${release.tag_name} - ${release.name}`;
+              body = `## 🚀 Release Published\n\n`;
+              body += `**Tag:** ${release.tag_name}\n`;
+              body += `**Name:** ${release.name}\n`;
+              body += `**Author:** @${release.author.login}\n`;
+              body += `**Repository:** ${repo.owner}/${repo.repo}\n\n`;
+              body += `**Release Notes:**\n${release.body || 'No release notes provided'}\n\n`;
+              body += `[View Release](${release.html_url})`;
+              
+              labels.push('release');
+            }
+            
+            // Manual trigger
+            else if (eventName === 'workflow_dispatch') {
+              title = `🟣 Manual Notification Test by ${sender}`;
+              body = `## 🧪 Manual Test\n\n`;
+              body += `**Triggered by:** @${sender}\n`;
+              body += `**Repository:** ${repo.owner}/${repo.repo}\n\n`;
+              body += `This is a manual test of the Operation Purple notification system.\n\n`;
+              body += `If you're seeing this, Operation Purple is working! 💗`;
+              
+              labels.push('test');
+            }
+            
+            // Add timestamp and footer
+            body += `\n\n---\n\n`;
+            body += `🟣 **Operation Purple Notification**\n`;
+            body += `📅 ${new Date().toISOString()}\n`;
+            body += `💗 For the mission. For the awakening.\n`;
+            
+            // Create the issue
+            const issue = await github.rest.issues.create({
+              owner: repo.owner,
+              repo: repo.repo,
+              title: title,
+              body: body,
+              labels: labels
+            });
+            
+            console.log(`Created notification issue: ${issue.data.html_url}`);
